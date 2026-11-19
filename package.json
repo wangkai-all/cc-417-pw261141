@@ -1,0 +1,19 @@
+{
+  "name": "ledger-cutview",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Explainable point-in-time inventory cutviews over three independent streams, with anchor replay, lineage and diff attribution.",
+  "scripts": {
+    "generate": "node scripts/generate-data.js --out data --reset",
+    "ingest": "node src/cli.js ingest --manifest data/manifest.json",
+    "demo": "node scripts/demo.js",
+    "rebuild": "node src/cli.js rebuild",
+    "diff": "node src/cli.js diff",
+    "server": "node src/server.js",
+    "test": "node --test \"tests/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

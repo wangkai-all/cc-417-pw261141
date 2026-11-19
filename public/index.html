@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cutview console — explainable inventory</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>Cutview console</h1>
+      <p class="sub">Point-in-time inventory from three independent streams</p>
+    </div>
+  </div>
+  <div class="streams" id="stream-strip" aria-label="Stream health"></div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Sections">
+  <button role="tab" aria-selected="true" data-tab="overview">Overview</button>
+  <button role="tab" aria-selected="false" data-tab="build">Build cutview</button>
+  <button role="tab" aria-selected="false" data-tab="compare">Compare</button>
+  <button role="tab" aria-selected="false" data-tab="entry">Manual entry</button>
+  <button role="tab" aria-selected="false" data-tab="runs">Runs &amp; recovery</button>
+</nav>
+
+<main>
+  <section id="panel-overview" class="panel" role="tabpanel">
+    <div class="grid two">
+      <div class="card">
+        <h2>Streams</h2>
+        <p class="hint">Each stream arrives on its own connector. Counts anchor; movements replay; notices overlay. They are never summed together.</p>
+        <div id="stream-cards" class="stack"></div>
+      </div>
+      <div class="card">
+        <h2>Coverage declarations</h2>
+        <p class="hint">A declared hole makes a cut <em>degraded</em>, not wrong. Missing declarations are disclosed as an unproven assumption.</p>
+        <div id="coverage-list" class="stack"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Keys</h2>
+      <p class="hint">Choose a sku/location to build a cut. The latest physical count is a claim at an instant, not a running balance.</p>
+      <div class="table-wrap"><table id="keys-table"></table></div>
+    </div>
+    <div class="card">
+      <h2>Cutviews</h2>
+      <div class="table-wrap"><table id="cutviews-table"></table></div>
+    </div>
+    <div class="card">
+      <h2>Ledger</h2>
+      <p class="hint">Append-only. Reversals and corrections are new rows; nothing is edited in place.</p>
+      <div class="table-wrap"><table id="ledger-table"></table></div>
+    </div>
+  </section>
+
+  <section id="panel-build" class="panel" role="tabpanel" hidden>
+    <form id="build-form" class="card form">
+      <h2>Reconstruct a cut</h2>
+      <p class="hint">A cut is <em>at</em> an instant, optionally restricted to what was <em>knowable</em> at another instant. Both are recorded on the result.</p>
+      <div class="fields">
+        <label>SKU <select name="sku" id="build-sku" required></select></label>
+        <label>Location <select name="location" id="build-location" required></select></label>
+        <label>Cut instant (at) <input name="at" type="datetime-local" step="1" required></label>
+        <label>Knowledge cutoff <input name="knowledge_at" type="datetime-local" step="1"></label>
+        <label>Threading
+          <select name="mode">
+            <option value="replay">replay from anchor</option>
+            <option value="incremental">incremental from a baseline cut</option>
+          </select>
+        </label>
+        <label>Baseline cutview <select name="baseline_cutview_id" id="baseline-select"><option value="">—</option></select></label>
+        <label>Simulate exit after step <input name="crash_after" type="number" min="1" max="8" placeholder="off"></label>
+      </div>
+      <p class="hint">Knowledge cutoff empty means “now”. Simulating an exit leaves checkpoints and publishes nothing.</p>
+      <div class="actions"><button type="submit" class="primary">Build cutview</button><button type="reset" class="ghost">Reset</button></div>
+      <p id="build-error" class="error" hidden></p>
+    </form>
+    <div id="build-result"></div>
+  </section>
+
+  <section id="panel-compare" class="panel" role="tabpanel" hidden>
+    <form id="diff-form" class="card form">
+      <h2>Compare two cuts</h2>
+      <p class="hint">Differences are attributed: movements, anchor revisions, or re-anchoring. The identity must close to zero or the diff reports it.</p>
+      <div class="fields">
+        <label>Cut A <select name="a" id="diff-a" required></select></label>
+        <label>Cut B <select name="b" id="diff-b" required></select></label>
+      </div>
+      <div class="actions"><button type="submit" class="primary">Compare</button></div>
+      <p id="diff-error" class="error" hidden></p>
+    </form>
+    <div id="diff-result"></div>
+  </section>
+
+  <section id="panel-entry" class="panel" role="tabpanel" hidden>
+    <div class="grid two">
+      <form id="count-form" class="card form">
+        <h2>Record a physical count</h2>
+        <p class="hint">Entering a count for an existing snapshot adds a <strong>revision</strong>. It never edits the ledger and never overwrites an earlier count.</p>
+        <div class="fields">
+          <label>SKU <select name="sku" id="count-sku" required></select></label>
+          <label>Location <select name="location" id="count-location" required></select></label>
+          <label>Counted at <input name="counted_at" type="datetime-local" step="1" required></label>
+          <label>Valued at <input name="effective_at" type="datetime-local" step="1"></label>
+          <label>Quantity <input name="qty" type="number" step="any" min="0" required></label>
+          <label>Unit <input name="unit" value="EA" required></label>
+          <label class="wide">Existing snapshot (to revise) <select name="snapshot_id" id="count-snapshot"><option value="">new count</option></select></label>
+          <label class="wide">Reason <input name="reason" placeholder="e.g. cycle count, recount after keying error"></label>
+        </div>
+        <div class="actions"><button type="submit" class="primary">Append count</button></div>
+        <p id="count-error" class="error" hidden></p>
+      </form>
+      <form id="correct-form" class="card form">
+        <h2>Correct one ledger movement</h2>
+        <p class="hint">A correction appends a <strong>reversal</strong> and a <strong>replacement</strong>. Restating keeps the original effective instant; forwarding posts both now.</p>
+        <div class="fields">
+          <label class="wide">Movement <select name="event_id" id="correct-event" required></select></label>
+          <label>New quantity <input name="qty" type="number" step="any" placeholder="blank keeps original"></label>
+          <label>Unit <input name="unit" placeholder="blank keeps original"></label>
+          <label>Timing
+            <select name="effective">
+              <option value="restate">restate at the original instant</option>
+              <option value="forward">post now (forward)</option>
+            </select>
+          </label>
+          <label>If forwarding, effective at <input name="effective_at" type="datetime-local" step="1"></label>
+          <label class="wide">Reason <input name="reason" required placeholder="required: why the original is wrong"></label>
+        </div>
+        <div class="actions"><button type="submit" class="primary">Append correction</button></div>
+        <p id="correct-error" class="error" hidden></p>
+      </form>
+    </div>
+    <div id="entry-result"></div>
+  </section>
+
+  <section id="panel-runs" class="panel" role="tabpanel" hidden>
+    <div class="card">
+      <h2>Rebuild runs</h2>
+      <p class="hint">A run checkpoints after every step. An aborted run has published nothing; resuming replays from its last checkpoint and must produce the same digest.</p>
+      <div class="table-wrap"><table id="runs-table"></table></div>
+    </div>
+    <div id="run-detail"></div>
+  </section>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

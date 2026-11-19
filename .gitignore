@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 node_modules/
+# Generated fictional fixture and local database / manual batch inbox.
+/data/
+/artifacts/
 .venv/
 __pycache__/
 .claude/
